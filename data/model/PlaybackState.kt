@@ -1,4 +1,3 @@
-package org.wit.audioplayer.data.model;
+package org.wit.audioplayer.data.model
 
-public class PlaybackState {
-}
+class PlaybackState 

@@ -1,4 +1,3 @@
-package org.wit.audioplayer.data.preferences;
+package org.wit.audioplayer.data.preferences
 
-public class UserPreferencesRepository {
-}
+class UserPreferencesRepository 
