@@ -5,17 +5,20 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import org.wit.audioplayer.data.local.AppDatabase
-import org.wit.audioplayer.data.repository.AudioRepository
-import org.wit.audioplayer.di.ViewModelFactory
+import org.koin.androidx.viewmodel.ext.android.viewModel
+import org.wit.audioplayer.R
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var songLibraryViewModel: SongLibraryViewModel
+    private val songLibraryViewModel: SongLibraryViewModel by viewModel()
+
+    private lateinit var recyclerView: RecyclerView
+    private val adapter = AudioTrackAdapter()
 
     private val openDocumentTreeLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -33,19 +36,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val database = AppDatabase.getInstance(applicationContext)
-        val dao = database.audioTrackDao()
-        val repository = AudioRepository(applicationContext, dao)
-        val factory = ViewModelFactory(repository)
-
-        songLibraryViewModel = ViewModelProvider(this, factory)[SongLibraryViewModel::class.java]
+        setContentView(R.layout.activity_main)
 
         openDocumentTreeLauncher.launch(null)
 
+        recyclerView = findViewById(R.id.recyclerView)
+        recyclerView.layoutManager = LinearLayoutManager(this)
+        recyclerView.adapter = adapter
+
         lifecycleScope.launch {
             songLibraryViewModel.uiState.collect { tracks ->
-                // TODO: refresh list
+                adapter.submitList(tracks)
             }
         }
     }
