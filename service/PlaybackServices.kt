@@ -83,9 +83,6 @@ class PlaybackServices : Service() {
         startForeground(1, buildNotification(track))
     }
 
-    /**
-     * Toggles playback between play and pause states.
-     */
     fun play() {
         if (!exoPlayer.isPlaying) {
             exoPlayer.play()
@@ -98,9 +95,6 @@ class PlaybackServices : Service() {
         }
     }
 
-    /**
-     * Stops playback, releases resources, and stops the service.
-     */
     fun stopPlayback() {
         exoPlayer.stop()
         exoPlayer.release()
@@ -110,9 +104,6 @@ class PlaybackServices : Service() {
         stopSelf()
     }
 
-    /**
-     * Builds a simple notification showing the current track playing.
-     */
     private fun buildNotification(track: AudioTrack): Notification {
         return NotificationCompat.Builder(this, "audio_playback_channel")
             .setContentTitle(track.title)
@@ -122,9 +113,7 @@ class PlaybackServices : Service() {
             .build()
     }
 
-    /**
-     * Creates notification channel for Android O and above.
-     */
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
