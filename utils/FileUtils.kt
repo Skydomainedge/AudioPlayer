@@ -17,7 +17,7 @@ object FileUtils {
      * @param treeUri Uri representing the directory selected via SAF
      * @return List of AudioTrack containing metadata for each MP3 found
      */
-    fun scanMp3FilesInDirectory(context: Context, treeUri: Uri): List<AudioTrack> {
+    fun scanAudioFiles(context: Context, treeUri: Uri): List<AudioTrack> {
         val tracks = mutableListOf<AudioTrack>()
 
         // Wrap Uri with DocumentFile for SAF traversal
