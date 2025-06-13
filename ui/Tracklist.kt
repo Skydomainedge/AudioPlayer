@@ -1,15 +1,17 @@
 package org.wit.audioplayer.ui
 
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import org.wit.audioplayer.data.entity.AudioTrack
 
+@RequiresApi(Build.VERSION_CODES.S)
 @Composable
 fun TrackList(
     tracks: List<AudioTrack>,
@@ -33,7 +35,7 @@ fun TrackList(
                 isCurrentTrack = isCurrentTrack,
                 onClick = { onPlayClick(track) }
             )
-            Divider()
+
         }
     }
 }
