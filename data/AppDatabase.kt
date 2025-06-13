@@ -1,16 +1,19 @@
-package org.wit.audioplayer.data.local
+package org.wit.audioplayer.data
 
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import org.wit.audioplayer.data.local.entity.AudioTrack
+import androidx.room.TypeConverters
+import org.wit.audioplayer.data.dao.AudioTrackDao
+import org.wit.audioplayer.data.entity.AudioTrack
 
 @Database(
     entities = [AudioTrack::class],
-    version = 1,
-    exportSchema = false
+    version = 2,
+    exportSchema = true
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun audioTrackDao(): AudioTrackDao
 
@@ -18,13 +21,15 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        fun getInstance(context: Context): AppDatabase {
+        fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "audio_player_db"
-                ).build()
+                    "audio_database"
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }
