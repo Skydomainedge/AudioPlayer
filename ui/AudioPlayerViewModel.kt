@@ -2,8 +2,10 @@ package org.wit.audioplayer.ui
 
 import android.app.Application
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import androidx.annotation.OptIn
 import androidx.documentfile.provider.DocumentFile
@@ -121,23 +123,60 @@ class AudioPlayerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun scanCustomDirectory(contentResolver: ContentResolver, treeUri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            val audioList = mutableListOf<AudioTrack>()
-            val rootDocument = DocumentFile.fromTreeUri(getApplication(), treeUri)
+            try {
+                val audioList = mutableListOf<AudioTrack>()
+                val rootDocument = DocumentFile.fromTreeUri(getApplication(), treeUri)
+                    ?: throw SecurityException("无法获取文档引用")
 
-            rootDocument?.let { scanDirectory(it, audioList) }
+                // 调试日志
+                println("开始扫描目录: ${treeUri}")
+                println("根目录名称: ${rootDocument.name}")
 
-            audioTrackDao.clearAll()
-            audioTrackDao.insertTracks(audioList)
-            _tracks.value = audioList
+                scanDirectory(rootDocument, audioList)
+
+                // 调试日志
+                println("找到 ${audioList.size} 个音频文件")
+
+                audioTrackDao.clearAll()
+                audioTrackDao.insertTracks(audioList)
+
+                // 强制从数据库重新加载
+                val updatedTracks = audioTrackDao.getAllTracks()
+                _tracks.value = updatedTracks
+
+                // 调试日志
+                println("数据库更新完成，现有 ${updatedTracks.size} 条记录")
+            } catch (e: Exception) {
+                println("扫描错误: ${e.message}")
+                _tracks.value = emptyList()
+            }
         }
     }
 
     private fun scanDirectory(directory: DocumentFile, result: MutableList<AudioTrack>) {
-        directory.listFiles().forEach { file ->
-            when {
-                file.isDirectory -> scanDirectory(file, result)
-                isAudioFile(file) -> result.add(createAudioTrack(file))
+        try {
+            val files = directory.listFiles()
+            if (files == null || files.isEmpty()) {
+                return
             }
+
+            files.forEach { file ->
+                try {
+                    when {
+                        file.isDirectory -> scanDirectory(file, result)
+                        isAudioFile(file) -> {
+                            val track = createAudioTrack(file)
+                            if (track.uri.isNotEmpty()) {
+                                result.add(track)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 跳过无法处理的文件
+                }
+            }
+        } catch (e: Exception) {
+            // 处理目录访问错误
         }
     }
 
@@ -154,14 +193,30 @@ class AudioPlayerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun createAudioTrack(file: DocumentFile): AudioTrack {
-        return AudioTrack(
-            id = (file.uri.toString() + file.name).hashCode().toLong(),
-            title = file.name ?: "Unknown",
-            uri = file.uri.toString(),
-            duration = getAudioDuration(file.uri),
-            artist = null,
-            album = null
-        )
+        return try {
+            val uri = file.uri?.toString() ?: ""
+            if (uri.isEmpty()) {
+                throw IllegalArgumentException("无效的文件URI")
+            }
+
+            AudioTrack(
+                id = (uri + file.name).hashCode().toLong(),
+                title = file.name ?: "Unknown",
+                uri = uri,
+                duration = getAudioDuration(file.uri),
+                artist = null,
+                album = null
+            )
+        } catch (e: Exception) {
+            AudioTrack(
+                id = 0,
+                title = "Invalid Track",
+                uri = "",
+                duration = 0,
+                artist = null,
+                album = null
+            )
+        }
     }
 
     private fun getAudioDuration(uri: Uri): Long {
@@ -175,53 +230,78 @@ class AudioPlayerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    // 修改 scanAudioFiles 方法以支持 Android 13+
     fun scanAudioFiles(contentResolver: ContentResolver) {
         viewModelScope.launch(Dispatchers.IO) {
-            val audioList = mutableListOf<AudioTrack>()
-
-            val projection = arrayOf(
-                MediaStore.Audio.Media._ID,
-                MediaStore.Audio.Media.TITLE,
-                MediaStore.Audio.Media.DATA,
-                MediaStore.Audio.Media.DURATION,
-                MediaStore.Audio.Media.ARTIST,
-                MediaStore.Audio.Media.ALBUM
-            )
-
-            contentResolver.query(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                "${MediaStore.Audio.Media.IS_MUSIC} != 0",
-                null,
-                "${MediaStore.Audio.Media.TITLE} ASC"
-            )?.use { cursor ->
-                val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-                val titleIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-                val dataIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
-                val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-                val artistIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-                val albumIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-
-                while (cursor.moveToNext()) {
-                    audioList.add(
-                        AudioTrack(
-                            id = cursor.getLong(idIndex),
-                            title = cursor.getString(titleIndex) ?: "Unknown",
-                            uri = Uri.withAppendedPath(
-                                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                                cursor.getLong(idIndex).toString()
-                            ).toString(),
-                            duration = cursor.getLong(durationIndex),
-                            artist = cursor.getString(artistIndex),
-                            album = cursor.getString(albumIndex)
-                        )
-                    )
+            try {
+                val audioList = mutableListOf<AudioTrack>()
+                val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+                } else {
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
                 }
-            }
 
-            audioTrackDao.clearAll()
-            audioTrackDao.insertTracks(audioList)
-            _tracks.value = audioList
+                val projection = arrayOf(
+                    MediaStore.Audio.Media._ID,
+                    MediaStore.Audio.Media.TITLE,
+                    MediaStore.Audio.Media.DATA,
+                    MediaStore.Audio.Media.DURATION,
+                    MediaStore.Audio.Media.ARTIST,
+                    MediaStore.Audio.Media.ALBUM
+                )
+
+                val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+                val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
+
+                contentResolver.query(
+                    collection,
+                    projection,
+                    selection,
+                    null,
+                    sortOrder
+                )?.use { cursor ->
+                    val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                    val titleIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+                    val dataIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                    val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                    val artistIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                    val albumIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(idIndex)
+                        val title = cursor.getString(titleIndex) ?: "Unknown"
+                        val path = cursor.getString(dataIndex)
+                        val duration = cursor.getLong(durationIndex)
+                        val artist = cursor.getString(artistIndex)
+                        val album = cursor.getString(albumIndex)
+
+                        // 对于 Android 10+，使用 Content URI
+                        val contentUri = ContentUris.withAppendedId(
+                            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                            id
+                        )
+
+                        audioList.add(
+                            AudioTrack(
+                                id = id,
+                                title = title,
+                                uri = contentUri.toString(),
+                                duration = duration,
+                                artist = artist,
+                                album = album
+                            )
+                        )
+                    }
+                }
+
+                audioTrackDao.clearAll()
+                audioTrackDao.insertTracks(audioList)
+                _tracks.value = audioList
+            } catch (e: SecurityException) {
+                _tracks.value = emptyList()
+            } catch (e: Exception) {
+                _tracks.value = emptyList()
+            }
         }
     }
 }

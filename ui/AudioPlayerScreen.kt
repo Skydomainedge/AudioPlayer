@@ -1,3 +1,4 @@
+// AudioPlayerScreen.kt
 package org.wit.audioplayer.ui
 
 import androidx.compose.foundation.layout.*
@@ -8,7 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
-
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -19,6 +20,20 @@ fun AudioPlayerScreen(
     val tracks by viewModel.tracks.collectAsState()
     val currentTrackId by viewModel.currentTrackId.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
+    val currentTrack = tracks.find { it.id == currentTrackId }
+
+    // Add state for current position
+    var currentPosition by remember { mutableStateOf(0L) }
+
+    // Update position periodically
+    LaunchedEffect(currentTrackId, playbackState) {
+        while (true) {
+            if (playbackState == Player.STATE_READY) {
+                currentPosition = viewModel.getCurrentPosition()
+            }
+            delay(500) // Update every 500ms
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -33,6 +48,37 @@ fun AudioPlayerScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            if (currentTrack != null) {
+                Column {
+                    TrackProgressBar(
+                        currentPosition = currentPosition,
+                        duration = currentTrack.duration,
+                        onSeekChanged = { position ->
+                            viewModel.seekTo(position)
+                            currentPosition = position
+                        }
+                    )
+
+                    PlayerControls(
+                        isPlaying = playbackState == Player.STATE_READY && viewModel.exoPlayer.isPlaying,
+                        onPlayPauseClick = { viewModel.togglePlayPause() },
+                        onPreviousClick = {
+                            val currentIndex = tracks.indexOfFirst { it.id == currentTrackId }
+                            if (currentIndex > 0) {
+                                viewModel.playTrack(tracks[currentIndex - 1])
+                            }
+                        },
+                        onNextClick = {
+                            val currentIndex = tracks.indexOfFirst { it.id == currentTrackId }
+                            if (currentIndex < tracks.size - 1) {
+                                viewModel.playTrack(tracks[currentIndex + 1])
+                            }
+                        }
+                    )
+                }
+            }
         }
     ) { padding ->
         if (tracks.isEmpty()) {
